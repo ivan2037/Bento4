@@ -1394,8 +1394,11 @@ WriteSamples(AP4_Mpeg2TsWriter*               ts_writer,
             }
             playlist->WriteString("\r\n");
         }
+    } else {
+		playlist->WriteString("#EXT-X-KEY:METHOD=NONE");
+		playlist->WriteString("\r\n");
     }
-    
+	
     for (unsigned int i=0; i<segment_durations.ItemCount(); i++) {
         if (Options.hls_version >= 3) {
             sprintf(string_buffer, "#EXTINF:%f,\r\n", segment_durations[i]);
