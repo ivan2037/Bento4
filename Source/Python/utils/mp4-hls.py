@@ -27,7 +27,7 @@ from subtitles import *
 
 # setup main options
 VERSION = "1.1.0"
-SDK_REVISION = '622'
+SDK_REVISION = '622_PACv3'
 SCRIPT_PATH = path.abspath(path.dirname(__file__))
 sys.path += [SCRIPT_PATH]
 
@@ -375,7 +375,24 @@ def OutputHls(options, media_sources):
             out_dir = path.join(options.output_dir, 'subtitles', subtitles_file.language)
             MakeNewDir(out_dir)
             media_filename = path.join(out_dir, subtitles_file.media_name)
-            shutil.copyfile(subtitles_file.media_source.filename, media_filename)
+###
+### PAC
+### PANASONIC HTML5 requires WEBVTT and X-TIMESTAMP-MAP
+###
+            if media_source.format == 'webvtt':
+                new_vtt_file = open(media_filename, "w")
+                new_vtt_file.write('WEBVTT\n')
+                new_vtt_file.write('X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:%d\n' % (int)(1 * 45000))
+
+                with open(subtitles_file.media_source.filename) as vtt_file:
+                    for line in vtt_file:
+                        new_vtt_file.write(line)
+
+                vtt_file.close()
+                new_vtt_file.close()
+            else:
+                shutil.copyfile(subtitles_file.media_source.filename, media_filename)
+                
             relative_url = 'subtitles/'+subtitles_file.language+'/subtitles.m3u8'
             playlist_filename = path.join(out_dir, 'subtitles.m3u8')
             CreateSubtitlesPlaylist(playlist_filename, subtitles_file.media_name, total_duration)
@@ -464,6 +481,13 @@ def OutputHls(options, media_sources):
             if len(subtitles_files):
                 ext_x_stream_inf += ',SUBTITLES="subtitles"'
 
+###                
+### PAC -- HTML5 requires this
+### https://tools.ietf.org/html/draft-pantos-http-live-streaming-23#section-4.3.4.2
+##
+            ext_x_stream_inf += ',CLOSED-CAPTIONS=NONE'
+
+            
             master_playlist.write(ext_x_stream_inf+'\r\n')
             master_playlist.write(options.base_url+media['dir']+'/'+options.media_playlist_name+'\r\n')
 
@@ -529,7 +553,7 @@ def main():
     parser.add_option('', '--segment-duration', dest="segment_duration",
                       help="Segment duration (default: 6)")
     parser.add_option('', '--disable-audio-encryption', dest="disable_audio_encryption", action="store_true", default=False,
-                      help="Disable audio track encryption")      
+                      help="Disable audio track encryption")    
     parser.add_option('', '--encryption-mode', dest="encryption_mode", metavar="<mode>",
                       help="Encryption mode (only used when --encryption-key is specified). AES-128 or SAMPLE-AES (default: AES-128)")
     parser.add_option('', '--encryption-key', dest="encryption_key", metavar="<key>",
@@ -553,7 +577,8 @@ def main():
     parser.add_option('', "--base-url", metavar="<base_url>", dest="base_url", default="",
                       help="The base URL for the Media Playlists and TS files listed in the playlists. This is the prefix for the files.")
     parser.add_option('', "--marlin-content-id", metavar="<marlin_content_id>", dest="marlin_content_id", default="",
-                      help="Add Marlin Content ID (CID) value")
+                      help="Marlin Content ID (CID) value")
+
     (options, args) = parser.parse_args()
     if len(args) == 0:
         parser.print_help()

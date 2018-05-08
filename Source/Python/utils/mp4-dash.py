@@ -28,7 +28,7 @@ from subtitles import *
 
 # setup main options
 VERSION = "1.8.0"
-SDK_REVISION = '622'
+SDK_REVISION = '622_PACv3'
 SCRIPT_PATH = path.abspath(path.dirname(__file__))
 sys.path += [SCRIPT_PATH]
 
@@ -43,12 +43,12 @@ SPLIT_INIT_SEGMENT_NAME     = 'init.mp4'
 NOSPLIT_INIT_FILE_PATTERN   = 'init-%s.mp4'
 ONDEMAND_MEDIA_FILE_PATTERN = '%s-%s.mp4'
 
-PADDED_SEGMENT_PATTERN      = 'seg-%04llu.m4s'
-PADDED_SEGMENT_URL_PATTERN  = 'seg-%04d.m4s'
-PADDED_SEGMENT_URL_TEMPLATE = '$RepresentationID$/seg-$Number%04d$.m4s'
-NOPAD_SEGMENT_PATTERN       = 'seg-%llu.m4s'
-NOPAD_SEGMENT_URL_PATTERN   = 'seg-%d.m4s'
-NOPAD_SEGMENT_URL_TEMPLATE  = '$RepresentationID$/seg-$Number$.m4s'
+PADDED_SEGMENT_PATTERN      = 'seg-%04llu.mp4'                           #### PAC: m4s --> mp4
+PADDED_SEGMENT_URL_PATTERN  = 'seg-%04d.mp4'                             #### PAC: m4s --> mp4
+PADDED_SEGMENT_URL_TEMPLATE = '$RepresentationID$/seg-$Number%04d$.mp4'  #### PAC: m4s --> mp4
+NOPAD_SEGMENT_PATTERN       = 'seg-%llu.mp4'                             #### PAC: m4s --> mp4
+NOPAD_SEGMENT_URL_PATTERN   = 'seg-%d.mp4'                               #### PAC: m4s --> mp4
+NOPAD_SEGMENT_URL_TEMPLATE  = '$RepresentationID$/seg-$Number$.mp4'      #### PAC: m4s --> mp4
 SEGMENT_PATTERN             = NOPAD_SEGMENT_PATTERN
 SEGMENT_URL_PATTERN         = NOPAD_SEGMENT_URL_PATTERN
 SEGMENT_URL_TEMPLATE        = NOPAD_SEGMENT_URL_TEMPLATE
@@ -150,7 +150,6 @@ def AddSegmentList(options, container, subdir, track, use_byte_range=False):
                            'SegmentURL',
                            media=prefix + (SEGMENT_URL_PATTERN % i))
         i += 1
-
 
 #############################################
 def AddSegmentTemplate(options, container, init_segment_url, media_url_template_prefix, track, stream_name):
@@ -441,6 +440,12 @@ def OutputDash(options, set_attributes, audio_sets, video_sets, subtitles_sets, 
             language = audio_tracks[0].language
             if (language != 'und') or options.always_output_lang:
                 kwargs['lang'] = language
+
+            ##
+            ## PAC
+            ##
+            kwargs['lang_name'] = audio_tracks[0].language_name
+            
             adaptation_set = xml.SubElement(*args, **kwargs)
 
             # see if we have descriptors
@@ -542,6 +547,11 @@ def OutputDash(options, set_attributes, audio_sets, video_sets, subtitles_sets, 
             }
             if (subtitles_file.language != None):
                 kwargs['lang'] = subtitles_file.language
+            ##
+            ## PAC
+            ##
+            kwargs['lang_name'] = subtitles_file.language_name
+            
             adaptation_set = xml.SubElement(*args, **kwargs)
 
             # add a 'subtitles' role
@@ -1141,6 +1151,11 @@ def SelectTracks(options, media_sources):
                 language = options.language_map[language]
             track.language = language
 
+            ## PAC
+            language_name = LanguageNames.get(track.language, track.language)
+            track.language_name = media_source.spec.get('+language_name', language_name).decode('utf-8')
+
+            
             # video scan type
             if track.type == 'video':
                 track.scan_type = media_source.spec.get('+scan_type', track.scan_type)

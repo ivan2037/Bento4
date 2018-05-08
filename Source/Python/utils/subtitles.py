@@ -25,11 +25,16 @@ class SubtitlesFile:
         self.language_name = 'Unknown'
         if not self.language:
             self.language = 'unknown'
-
+##
+## PAC
+##
+        self.two_letter_language = 'und'
         if len(self.language) == 3:
             # convert to 2 char code
-            self.language = LanguageCodeMap.get(self.language, self.language)
-        language_name = LanguageNames.get(self.language, self.language_name)
+            # self.language = LanguageCodeMap.get(self.language, self.language)
+            self.two_letter_language = LanguageCodeMap.get(self.language, self.language) ### PAC
+            
+        language_name = LanguageNames.get(self.two_letter_language, self.language_name)  ### PAC
         self.language_name = media_source.spec.get('+language_name', language_name)
 
         if media_source.format == 'ttml':
