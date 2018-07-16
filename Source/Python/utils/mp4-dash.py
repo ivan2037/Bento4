@@ -28,7 +28,7 @@ from subtitles import *
 
 # setup main options
 VERSION = "1.8.0"
-SDK_REVISION = '622_PACv3'
+SDK_REVISION = '624_PACv5'
 SCRIPT_PATH = path.abspath(path.dirname(__file__))
 sys.path += [SCRIPT_PATH]
 
@@ -113,6 +113,19 @@ MpegCencSchemeMap = {
     'cens': 'MPEG-CENS',
     'cbcs': 'MPEG-CBCS'
 }
+
+#############################################
+## PAC
+def CreateSubtitlesPlaylist(playlist_filename, webvtt_filename, duration):
+    playlist = open(playlist_filename, 'wb+')
+    playlist.write('#EXTM3U\r\n')
+    playlist.write('#EXT-X-TARGETDURATION:%d\r\n' % (duration))
+    playlist.write('#EXT-X-VERSION:3\r\n')
+    playlist.write('#EXT-X-MEDIA-SEQUENCE:0\r\n')
+    playlist.write('#EXT-X-PLAYLIST-TYPE:VOD\r\n')
+    playlist.write('#EXTINF:%d,\r\n' % (duration))
+    playlist.write(webvtt_filename+'\r\n')
+    playlist.write('#EXT-X-ENDLIST\r\n')
 
 #############################################
 def AddSegmentList(options, container, subdir, track, use_byte_range=False):
@@ -378,7 +391,7 @@ def OutputDash(options, set_attributes, audio_sets, video_sets, subtitles_sets, 
             maxHeight = 0
             for video_track in video_tracks:
                 if minWidth  == 0 or video_track.width < minWidth:  minWidth  = video_track.width
-                if minHeight == 0 or video_track.width < minHeight: minHeight = video_track.height
+                if minHeight == 0 or video_track.height < minHeight: minHeight = video_track.height
                 if video_track.width  > maxWidth:  maxWidth  = video_track.width
                 if video_track.height > maxHeight: maxHeight = video_track.height
 
@@ -441,10 +454,7 @@ def OutputDash(options, set_attributes, audio_sets, video_sets, subtitles_sets, 
             if (language != 'und') or options.always_output_lang:
                 kwargs['lang'] = language
 
-            ##
-            ## PAC
-            ##
-            kwargs['lang_name'] = audio_tracks[0].language_name
+            kwargs['lang_name'] = audio_tracks[0].language_name         #### PAC : lang_name
             
             adaptation_set = xml.SubElement(*args, **kwargs)
 
@@ -706,6 +716,7 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
     all_audio_tracks     = sum(audio_sets.values(),     [])
     all_video_tracks     = sum(video_sets.values(),     [])
     all_subtitles_tracks = sum(subtitles_sets.values(), [])
+    
 
     master_playlist_file = open(path.join(options.output_dir, options.hls_master_playlist_name), 'wb+')
     master_playlist_file.write('#EXTM3U\r\n')
@@ -718,16 +729,21 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
     master_playlist_file.write('\r\n')
     master_playlist_file.write('# Audio\r\n')
     audio_groups = {}
+    qindex = 0    
     for adaptation_set_name, audio_tracks in audio_sets.items():
         language = audio_tracks[0].language.decode('utf-8')
         language_name = LanguageNames.get(language, language).decode('utf-8')
 
+        if len(audio_tracks[0].language_name):
+            language_name = audio_tracks[0].language_name         #### PAC : lang_name
+        
         audio_group_name = adaptation_set_name[0]+'/'+adaptation_set_name[2]
         audio_groups[audio_group_name] = {
             'codec': '',
             'average_segment_bitrate': 0,
             'max_segment_bitrate': 0
         }
+ 
         for audio_track in audio_tracks:
             # update the avergage and max bitrates
             if audio_track.average_segment_bitrate > audio_groups[audio_group_name]['average_segment_bitrate']:
@@ -748,18 +764,25 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
                 media_playlist_name = audio_track.representation_id+".m3u8"
                 media_playlist_path = media_playlist_name
             else:
-                media_subdir        = audio_track.representation_id
+                media_subdir        = options.media_base_dir + audio_track.representation_id      #### PAC
                 media_file_name     = ''
                 media_playlist_name = options.hls_media_playlist_name
                 media_playlist_path = media_subdir+'/'+media_playlist_name
 
-            master_playlist_file.write(('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="%s",LANGUAGE="%s",NAME="%s",AUTOSELECT=YES,DEFAULT=YES,URI="%s"\r\n' % (
-                                        audio_group_name,
-                                        language,
-                                        language_name,
-                                        media_playlist_path)).encode('utf-8'))
-            OutputHlsTrack(options, audio_track, media_subdir, media_playlist_name, media_file_name)
+            #### PAC ####
+            master_playlist_file.write(('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="%s",LANGUAGE="%s",NAME="%s",AUTOSELECT=YES' % (
+                                       audio_group_name, language, language_name)).encode('utf-8'))
 
+            if qindex == 0:
+                master_playlist_file.write(',DEFAULT=YES')
+            else:
+                master_playlist_file.write(',DEFAULT=NO')
+            
+            master_playlist_file.write((',URI="%s"\r\n' % (media_playlist_path)).encode('utf-8'))
+                    
+            OutputHlsTrack(options, audio_track, media_subdir, media_playlist_name, media_file_name)
+            qindex += 1
+            
     master_playlist_file.write('\r\n')
     master_playlist_file.write('# Video\r\n')
     iframe_playlist_lines = []
@@ -771,7 +794,7 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
             media_playlist_path   = media_playlist_name
             iframes_playlist_name = video_track.representation_id+"_iframes.m3u8"
         else:
-            media_subdir          = video_track.representation_id
+            media_subdir          = options.media_base_dir + video_track.representation_id      #### PAC
             media_file_name       = ''
             media_playlist_name   = options.hls_media_playlist_name
             media_playlist_path   = media_subdir+'/'+media_playlist_name
@@ -781,23 +804,34 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
             # one entry per audio group
             for audio_group_name in audio_groups:
                 audio_codec = audio_groups[audio_group_name]['codec']
-                master_playlist_file.write('#EXT-X-STREAM-INF:AUDIO="%s",AVERAGE-BANDWIDTH=%d,BANDWIDTH=%d,CODECS="%s",RESOLUTION=%dx%d\r\n' % (
+                master_playlist_file.write('#EXT-X-STREAM-INF:AUDIO="%s",AVERAGE-BANDWIDTH=%d,BANDWIDTH=%d,CODECS="%s",RESOLUTION=%dx%d' % (
                                            audio_group_name,
                                            video_track.average_segment_bitrate + audio_groups[audio_group_name]['average_segment_bitrate'],
                                            video_track.max_segment_bitrate + audio_groups[audio_group_name]['max_segment_bitrate'],
                                            video_track.codec+','+audio_codec,
                                            video_track.width,
-                                           video_track.height))
-                master_playlist_file.write(media_playlist_path+'\r\n')
+                                           video_track.height))    #### PAC ####
         else:
             # no audio
-            master_playlist_file.write('#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=%d,BANDWIDTH=%d,CODECS="%s",RESOLUTION=%dx%d\r\n' % (
+            master_playlist_file.write('#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=%d,BANDWIDTH=%d,CODECS="%s",RESOLUTION=%dx%d' % (
                                        video_track.average_segment_bitrate,
                                        video_track.max_segment_bitrate,
                                        video_track.codec,
                                        video_track.width,
-                                       video_track.height))
-            master_playlist_file.write(media_playlist_path+'\r\n')
+                                       video_track.height))    #### PAC ####
+
+
+        if len(subtitles_files):
+            master_playlist_file.write(',SUBTITLES="subs"') 
+
+###                
+### PAC -- HTML5 requires this
+### https://tools.ietf.org/html/draft-pantos-http-live-streaming-23#section-4.3.4.2
+##
+        master_playlist_file.write(',CLOSED-CAPTIONS=NONE')       #### PAC ####
+        
+        master_playlist_file.write('\r\n')                        #### PAC ####            
+        master_playlist_file.write(media_playlist_path+'\r\n')    #### PAC ####            
 
         OutputHlsTrack(options, video_track, media_subdir, media_playlist_name, media_file_name)
         OutputHlsIframeIndex(options, video_track, media_subdir, iframes_playlist_name, media_file_name)
@@ -809,7 +843,7 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
                                      video_track.codec,
                                      video_track.width,
                                      video_track.height,
-                                     media_playlist_path))
+                                     media_subdir +'/'+ iframes_playlist_name ))             #### PAC
 
     master_playlist_file.write('\r\n# I-Frame Playlists\r\n')
     master_playlist_file.write(''.join(iframe_playlist_lines))
@@ -823,7 +857,7 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
                 continue
             language = subtitles_track.language.decode('utf-8')
             language_name = LanguageNames.get(language, language).decode('utf-8')
-            
+                
             if options.on_demand or not options.split:
                 media_subdir        = ''
                 media_file_name     = subtitles_track.parent.media_name
@@ -840,10 +874,27 @@ def OutputHls(options, set_attributes, audio_sets, video_sets, subtitles_sets, s
             
     # WebVTT subtitles
     if len(subtitles_files):
+        
+        if len(all_video_tracks):
+            presentation_duration = all_video_tracks[0].total_duration
+        else:
+            presentation_duration = 0
+            
         master_playlist_file.write('\r\n# Subtitles (WebVTT)\r\n')
         for subtitles_file in subtitles_files:
-            master_playlist_file.write('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="{0:s}",DEFAULT=NO,AUTOSELECT=YES,FORCED=YES,LANGUAGE="{0:s}",URI="subtitles/{0:s}/{1:s}"\r\n'
-                                       .format(subtitles_file.language,subtitles_file.media_name))
+            language = subtitles_file.language.decode('utf-8')       #### PAC ####
+            if len(subtitles_file.language_name):
+                language_name =  subtitles_file.language_name        #### PAC : lang_name
+
+            out_dir = path.join(options.output_dir, 'subtitles', language)
+            
+            relative_url = 'subtitles/'+subtitles_file.language+'/subtitles.m3u8'
+            playlist_filename = path.join(out_dir, 'subtitles.m3u8')
+            CreateSubtitlesPlaylist(playlist_filename, subtitles_file.media_name, presentation_duration) ### PAC ####
+                
+           ## NOTE: FORCED=YES doesn't work on Safari
+            master_playlist_file.write('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="{2:s}",DEFAULT=NO,AUTOSELECT=YES,LANGUAGE="{0:s}",URI="{1:s}"\r\n'
+                                       .format(subtitles_file.language,relative_url,language_name))
 
 #############################################
 def OutputSmooth(options, audio_tracks, video_tracks):
@@ -1389,6 +1440,9 @@ def main():
                       help="Specify the key URI to use for FairPlay Streaming key delivery (only valid with --hls option)")
     parser.add_option('', "--exec-dir", metavar="<exec_dir>", dest="exec_dir", default=default_exec_dir,
                       help="Directory where the Bento4 executables are located")
+    parser.add_option('', '--media-base-dir', dest='media_base_dir', default='',
+                      help='Use this media-base-dir for prefixed media subfolder (PAC - PANASONIC) ')
+ 
     (options, args) = parser.parse_args()
     if len(args) == 0:
         parser.print_help()
@@ -1494,6 +1548,10 @@ def main():
         if options.encryption_key and options.encryption_cenc_scheme != 'cbcs':
             raise Exception('--hls requires --encryption-cenc-scheme=cbcs')
 
+
+    if options.media_base_dir:
+        print '[INFO] media base dir: ' + options.media_base_dir     #### PAC
+        
     # compute the KID(s) and encryption key(s) if needed
     if options.encryption_key:
         ResolveEncryptionKeys(options)
@@ -1784,7 +1842,9 @@ def main():
         if options.split:
             for adaptation_sets in [audio_sets, video_sets, subtitles_sets]:
                 for adaptation_set_name, tracks in adaptation_sets.items():
-                    base_dir = options.output_dir
+                    base_dir = options.output_dir + '/' + options.media_base_dir     #### PAC
+
+                    MakeNewDir(base_dir)
                     for subdir in adaptation_set_name:
                         base_dir = path.join(base_dir, subdir)
                         MakeNewDir(base_dir)
@@ -1853,7 +1913,24 @@ def main():
                 out_dir = path.join(options.output_dir, 'subtitles', subtitles_file.language)
                 MakeNewDir(out_dir)
                 media_filename = path.join(out_dir, subtitles_file.media_name)
-                shutil.copyfile(subtitles_file.media_source.filename, media_filename)
+
+###
+### PAC
+### PANASONIC HTML5 requires WEBVTT and X-TIMESTAMP-MAP
+###
+                if media_source.format == 'webvtt':
+                    new_vtt_file = open(media_filename, "w")
+                    new_vtt_file.write('WEBVTT\n')
+                    new_vtt_file.write('X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:%d\n' % (int)(1 * 45000))
+                    
+                    with open(subtitles_file.media_source.filename) as vtt_file:
+                        for line in vtt_file:
+                            new_vtt_file.write(line)
+                            
+                    vtt_file.close()
+                    new_vtt_file.close()
+                else:
+                    shutil.copyfile(subtitles_file.media_source.filename, media_filename)
 
     # output the DASH MPD
     OutputDash(options, set_attributes, audio_sets, video_sets, subtitles_sets, subtitles_files)

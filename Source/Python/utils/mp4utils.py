@@ -1099,7 +1099,7 @@ def WidevineVarInt(value):
 def WidevineMakeHeader(fields):
     buffer = ''
     for (field_num, field_val) in fields:
-        if type(field_val) == int and field_val < 256:
+        if type(field_val) == int: # and field_val < 256:
             wire_type = 0 # varint
             wire_val = WidevineVarInt(field_val)
         elif type(field_val) == str:
@@ -1133,6 +1133,9 @@ def ComputeWidevineHeader(header_spec, kid_hex):
             protobuf_fields.append((4, fields['content_id'].decode('hex')))
         if 'policy' in fields:
             protobuf_fields.append((6, fields['policy']))
+        if 'protection_scheme' in fields:
+            protobuf_fields.append((9, int(fields['protection_scheme'])))
+
         return WidevineMakeHeader(protobuf_fields)
 
     return ""
